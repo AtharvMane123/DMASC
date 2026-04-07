@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.tabs.TabLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/tabLayout"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@android:color/white"
+    android:theme="@style/ThemeOverlay.MaterialComponents.Dark.ActionBar">
+
+    <com.google.android.material.tabs.TabItem
+        android:id="@+id/tabCamera"
+        android:text="Camera"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+
+    <com.google.android.material.tabs.TabItem
+        android:id="@+id/tabModel"
+        android:text="Model"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content" />
+</com.google.android.material.tabs.TabLayout>

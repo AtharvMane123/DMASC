@@ -1,0 +1,17 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <RadioGroup
+        android:id="@+id/cameraOptions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <RadioButton android:id="@+id/frontCamera" android:text="Front Camera" />
+        <RadioButton android:id="@+id/backCamera" android:text="Back Camera" />
+        <RadioButton android:id="@+id/usbCamera" android:text="USB Camera" />
+
+    </RadioGroup>
+</LinearLayout>

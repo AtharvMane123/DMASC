@@ -1,0 +1,3 @@
+//include ':app' ,':tensorflow-lite'
+rootProject.name = "tensorflow-yolov4-tflite"
+include ':app'
