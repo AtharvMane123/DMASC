@@ -24,4 +24,23 @@
     <string name="change_camera">Change Camera</string>
     <string name="change_model">Change Model</string>
     <string name="start_detection">Open Fullscreen Camera</string>
+    <string name="map_overlay_title">TACTICAL MAP</string>
+    <string name="map_overlay_hint">Drag or tap</string>
+    <string name="full_map_title">Mission Map</string>
+    <string name="full_map_subtitle">Tap Mark A or Mark B, then tap the map to place points and measure distance.</string>
+    <string name="close_map">Close map</string>
+    <string name="map_tools_title">Map Tools</string>
+    <string name="map_tools_subtitle">These controls appear only in fullscreen map mode.</string>
+    <string name="map_mark_a">Mark Point A</string>
+    <string name="map_mark_b">Mark Point B</string>
+    <string name="map_center">Focus on Points</string>
+    <string name="map_clear">Clear Markers</string>
+    <string name="map_distance_label">Measured distance</string>
+    <string name="map_distance_default">Tap two points to measure</string>
+    <string name="map_my_location">My Location</string>
+    <string name="map_satellite">Satellite</string>
+    <string name="settings_title">Settings</string>
+    <string name="map_panel_title">Map Status</string>
+    <string name="map_panel_subtitle">Tap the tactical map to expand it to fullscreen mode.</string>
+    <string name="permissions_required">Camera and location permissions are required.</string>
 </resources>

@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Tactical Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    html, body, #map {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #08111d;
+    }
+    .leaflet-container {
+      background: #08111d;
+      font-family: sans-serif;
+    }
+    .leaflet-control-container {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 });
+    const satelliteLayer = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      { maxZoom: 19 }
+    );
+
+    const map = L.map('map', {
+      zoomControl: false,
+      attributionControl: false
+    }).setView([20.5937, 78.9629], 5);
+    satelliteLayer.addTo(map);
+
+    let compactMode = false;
+    let userMarker = null;
+    let pointAMarker = null;
+    let pointBMarker = null;
+    let distanceLine = null;
+    let currentState = {
+      userLat: 20.5937,
+      userLng: 78.9629,
+      pointALat: null,
+      pointALng: null,
+      pointBLat: null,
+      pointBLng: null,
+      pendingMode: '',
+      mapMode: 'satellite'
+    };
+    let initialFocusApplied = false;
+
+    function toLatLng(lat, lng) {
+      return lat == null || lng == null ? null : L.latLng(lat, lng);
+    }
+
+    function setLayerMode(mode) {
+      if (mode === 'street') {
+        if (map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
+        if (!map.hasLayer(streetLayer)) streetLayer.addTo(map);
+      } else {
+        if (map.hasLayer(streetLayer)) map.removeLayer(streetLayer);
+        if (!map.hasLayer(satelliteLayer)) satelliteLayer.addTo(map);
+      }
+    }
+
+    function markerStyle(color) {
+      return {
+        radius: compactMode ? 6 : 8,
+        color,
+        fillColor: color,
+        fillOpacity: 0.95,
+        weight: 2
+      };
+    }
+
+    function updateMarker(ref, latlng, label, color) {
+      if (ref.layer) {
+        map.removeLayer(ref.layer);
+        ref.layer = null;
+      }
+      if (!latlng) return;
+      ref.layer = L.circleMarker(latlng, markerStyle(color)).addTo(map);
+      if (!compactMode) {
+        ref.layer.bindTooltip(label, { permanent: true, direction: 'top' });
+      }
+    }
+
+    function refreshVisuals() {
+      setLayerMode(currentState.mapMode);
+
+      const userLatLng = toLatLng(currentState.userLat, currentState.userLng);
+      const pointA = toLatLng(currentState.pointALat, currentState.pointALng);
+      const pointB = toLatLng(currentState.pointBLat, currentState.pointBLng);
+
+      updateMarker({ layer: userMarker }, userLatLng, 'You', '#4df5c7');
+      userMarker = userLatLng ? L.circleMarker(userLatLng, markerStyle('#4df5c7')).addTo(map) : null;
+      if (userMarker && !compactMode) {
+        userMarker.bindTooltip('You', { permanent: true, direction: 'top' });
+      }
+
+      if (pointAMarker) map.removeLayer(pointAMarker);
+      if (pointBMarker) map.removeLayer(pointBMarker);
+      pointAMarker = pointA ? L.circleMarker(pointA, markerStyle('#35c2ff')).addTo(map) : null;
+      pointBMarker = pointB ? L.circleMarker(pointB, markerStyle('#ffd166')).addTo(map) : null;
+      if (pointAMarker && !compactMode) pointAMarker.bindTooltip('Point A', { permanent: true, direction: 'top' });
+      if (pointBMarker && !compactMode) pointBMarker.bindTooltip('Point B', { permanent: true, direction: 'top' });
+
+      if (distanceLine) {
+        map.removeLayer(distanceLine);
+        distanceLine = null;
+      }
+
+      if (pointA && pointB) {
+        distanceLine = L.polyline([pointA, pointB], {
+          color: '#62f0de',
+          weight: compactMode ? 3 : 4,
+          opacity: 0.9
+        }).addTo(map);
+        const distanceMeters = map.distance(pointA, pointB);
+        const text = distanceMeters >= 1000
+          ? (distanceMeters / 1000).toFixed(2) + ' km'
+          : Math.round(distanceMeters) + ' m';
+        if (window.AndroidBridge && window.AndroidBridge.onDistanceChanged) {
+          window.AndroidBridge.onDistanceChanged(text);
+        }
+      } else if (window.AndroidBridge && window.AndroidBridge.onDistanceChanged) {
+        window.AndroidBridge.onDistanceChanged('Tap two points to measure');
+      }
+    }
+
+    function applyState(state) {
+      currentState = Object.assign({}, currentState, state || {});
+      refreshVisuals();
+      if (!initialFocusApplied) {
+        focusOnUser(false);
+        initialFocusApplied = true;
+      }
+    }
+
+    function setCompactMode(value) {
+      compactMode = !!value;
+      if (compactMode) {
+        map.dragging.disable();
+        map.touchZoom.disable();
+        map.doubleClickZoom.disable();
+        map.scrollWheelZoom.disable();
+        map.boxZoom.disable();
+        map.keyboard.disable();
+      } else {
+        map.dragging.enable();
+        map.touchZoom.enable();
+        map.doubleClickZoom.enable();
+        map.scrollWheelZoom.enable();
+      }
+      refreshVisuals();
+    }
+
+    function focusOnUser(animate = true) {
+      const userLatLng = toLatLng(currentState.userLat, currentState.userLng);
+      if (userLatLng) {
+        map.setView(userLatLng, compactMode ? 13 : 18, { animate });
+      }
+    }
+
+    map.on('click', (event) => {
+      if (compactMode) return;
+
+      if (currentState.pendingMode === 'A') {
+        currentState.pointALat = event.latlng.lat;
+        currentState.pointALng = event.latlng.lng;
+        currentState.pendingMode = '';
+        if (window.AndroidBridge && window.AndroidBridge.onPointChanged) {
+          window.AndroidBridge.onPointChanged('A', event.latlng.lat, event.latlng.lng);
+        }
+      } else if (currentState.pendingMode === 'B') {
+        currentState.pointBLat = event.latlng.lat;
+        currentState.pointBLng = event.latlng.lng;
+        currentState.pendingMode = '';
+        if (window.AndroidBridge && window.AndroidBridge.onPointChanged) {
+          window.AndroidBridge.onPointChanged('B', event.latlng.lat, event.latlng.lng);
+        }
+      }
+      refreshVisuals();
+    });
+
+    window.applyState = applyState;
+    window.setCompactMode = setCompactMode;
+    window.focusOnUser = focusOnUser;
+  </script>
+</body>
+</html>
