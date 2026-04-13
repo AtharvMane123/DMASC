@@ -9,6 +9,17 @@
     <color name="success">#4CAF50</color>
     <color name="primaryText">#1F2D5A</color>
     <color name="white">#FFFFFF</color>
+    <color name="home_text_primary">#14213D</color>
+    <color name="home_text_secondary">#52627A</color>
+    <color name="home_panel_subtitle">#AAC0DA</color>
+    <color name="home_button_primary">#124E78</color>
+    <color name="home_button_secondary">#F0A202</color>
+    <color name="home_button_start">#17A398</color>
+    <color name="camera_overlay_dark">#09111F</color>
+    <color name="camera_overlay_surface">#CC102238</color>
+    <color name="camera_overlay_surface_strong">#E61A314D</color>
+    <color name="camera_overlay_subtle">#BFD0E3</color>
+    <color name="camera_overlay_outline">#4DFFFFFF</color>
 
     <color name="tfe_semi_transparent">#66000000</color>
 </resources>

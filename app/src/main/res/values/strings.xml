@@ -1,4 +1,27 @@
 <resources>
     <string name="tfe_od_app_name" translation_description="Object Detection demo app [CHAR_LIMIT=40]">TFL Detect</string>
     <string name="tfe_od_camera_error" translation_description="Error regarding camera support[CHAR_LIMIT=40]">This device doesn\'t support Camera2 API.</string>
+    <string name="back">Back</string>
+    <string name="camera_screen_title">Live Detection</string>
+    <string name="camera_screen_subtitle">Fullscreen camera with instant model switching</string>
+    <string name="model_dropdown_hint">Model</string>
+    <string name="live_metrics">Live Metrics</string>
+    <string name="live_metrics_subtitle">Real-time preview details without blocking the camera</string>
+    <string name="frame">Frame</string>
+    <string name="crop">Crop</string>
+    <string name="inference_time">Inference time</string>
+    <string name="selected_model">Selected model</string>
+    <string name="selected_camera">Selected camera</string>
+    <string name="threads">Threads</string>
+    <string name="api">API</string>
+    <string name="home_brand">DMASC Innovations</string>
+    <string name="home_tagline">A cleaner launch screen for quick model demos and camera selection.</string>
+    <string name="home_preview_title">Fast camera-first workflow</string>
+    <string name="home_preview_subtitle">Pick your camera, choose a bundled TensorFlow Lite model, and jump straight into a fullscreen detector.</string>
+    <string name="home_controls_title">Project Control</string>
+    <string name="home_controls_subtitle">Prepared for multi-model demos without changing the detection flow.</string>
+    <string name="camera_preview">Camera preview</string>
+    <string name="change_camera">Change Camera</string>
+    <string name="change_model">Change Model</string>
+    <string name="start_detection">Open Fullscreen Camera</string>
 </resources>

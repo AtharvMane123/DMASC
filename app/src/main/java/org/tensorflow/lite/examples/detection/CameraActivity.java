@@ -17,9 +17,9 @@
 package org.tensorflow.lite.examples.detection;
 
 import android.Manifest;
-import android.app.AlertDialog;
 import android.app.Fragment;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.hardware.Camera;
 import android.hardware.camera2.CameraAccessException;
@@ -35,28 +35,32 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Trace;
-import androidx.annotation.NonNull;
-import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.SwitchCompat;
-import androidx.appcompat.widget.Toolbar;
-
-import android.util.Log;
 import android.util.Size;
-import android.view.LayoutInflater;
 import android.view.Surface;
 import android.view.View;
-import android.view.ViewTreeObserver;
 import android.view.WindowManager;
+import android.widget.ArrayAdapter;
+import android.widget.AutoCompleteTextView;
 import android.widget.CompoundButton;
-import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.SwitchCompat;
+import androidx.core.content.ContextCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
+
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
-import com.google.android.material.tabs.TabLayout;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
+
 import org.tensorflow.lite.examples.detection.env.ImageUtils;
 import org.tensorflow.lite.examples.detection.env.Logger;
 
@@ -68,34 +72,37 @@ public abstract class CameraActivity extends AppCompatActivity
   private static final Logger LOGGER = new Logger();
 
   private static final int PERMISSIONS_REQUEST = 1;
-
   private static final String PERMISSION_CAMERA = Manifest.permission.CAMERA;
+
   protected int previewWidth = 0;
   protected int previewHeight = 0;
+  protected String selectedCameraType = "Rear Camera";
+  protected String selectedModelFile = ModelCatalog.DEFAULT_MODEL_FILE;
+  protected TextView frameValueTextView;
+  protected TextView cropValueTextView;
+  protected TextView inferenceTimeTextView;
+  protected TextView modelValueTextView;
+  protected TextView cameraValueTextView;
+  protected ImageView bottomSheetArrowImageView;
+
   private boolean debug = false;
   private Handler handler;
-  private boolean useFrontCamera = false;
-
   private HandlerThread handlerThread;
   private boolean useCamera2API;
   private boolean isProcessingFrame = false;
-  private byte[][] yuvBytes = new byte[3][];
+  private final byte[][] yuvBytes = new byte[3][];
   private int[] rgbBytes = null;
   private int yRowStride;
   private Runnable postInferenceCallback;
   private Runnable imageConverter;
 
   private LinearLayout bottomSheetLayout;
-  private LinearLayout gestureLayout;
   private BottomSheetBehavior<LinearLayout> sheetBehavior;
-
-  protected TextView frameValueTextView, cropValueTextView, inferenceTimeTextView;
-  protected ImageView bottomSheetArrowImageView;
-  private ImageView plusImageView, minusImageView;
+  private ImageView plusImageView;
+  private ImageView minusImageView;
   private SwitchCompat apiSwitchCompat;
   private TextView threadsTextView;
-  protected String selectedCameraType = "Rear Camera"; // default
-
+  private AutoCompleteTextView modelDropdown;
 
   @Override
   protected void onCreate(final Bundle savedInstanceState) {
@@ -103,27 +110,18 @@ public abstract class CameraActivity extends AppCompatActivity
     super.onCreate(null);
 
     selectedCameraType = getIntent().getStringExtra("CAMERA_TYPE");
-    if (selectedCameraType == null) selectedCameraType = "Rear Camera";
-
+    if (selectedCameraType == null) {
+      selectedCameraType = "Rear Camera";
+    }
+    selectedModelFile =
+        ModelCatalog.getSafeModelFile(getAssets(), getIntent().getStringExtra("MODEL_FILE"));
 
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
+    WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
     setContentView(R.layout.tfe_od_activity_camera);
+    applyImmersiveMode();
 
-    ImageButton settingsButton = findViewById(R.id.settingsButton);
-    if (settingsButton != null) {
-      settingsButton.setOnClickListener(v -> showSettingsPopup());
-    } else {
-
-
-      Log.e("CameraActivity", "⚠️ settingsButton not found in layout!");
-    }
-
-    Toolbar toolbar = findViewById(R.id.toolbar);
-//    showCameraSelectionDialog();
-
-    setSupportActionBar(toolbar);
-    getSupportActionBar().setDisplayShowTitleEnabled(false);
+    bindTopOverlay();
 
     if (hasPermission()) {
       setFragment();
@@ -136,65 +134,102 @@ public abstract class CameraActivity extends AppCompatActivity
     minusImageView = findViewById(R.id.minus);
     apiSwitchCompat = findViewById(R.id.api_info_switch);
     bottomSheetLayout = findViewById(R.id.bottom_sheet_layout);
-    gestureLayout = findViewById(R.id.gesture_layout);
-    sheetBehavior = BottomSheetBehavior.from(bottomSheetLayout);
     bottomSheetArrowImageView = findViewById(R.id.bottom_sheet_arrow);
-
-    ViewTreeObserver vto = gestureLayout.getViewTreeObserver();
-    vto.addOnGlobalLayoutListener(
-        new ViewTreeObserver.OnGlobalLayoutListener() {
-          @Override
-          public void onGlobalLayout() {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN) {
-              gestureLayout.getViewTreeObserver().removeGlobalOnLayoutListener(this);
-            } else {
-              gestureLayout.getViewTreeObserver().removeOnGlobalLayoutListener(this);
-            }
-            //                int width = bottomSheetLayout.getMeasuredWidth();
-            int height = gestureLayout.getMeasuredHeight();
-
-            sheetBehavior.setPeekHeight(height);
-          }
-        });
-    sheetBehavior.setHideable(true);
-
-    sheetBehavior.setBottomSheetCallback(
-        new BottomSheetBehavior.BottomSheetCallback() {
-          @Override
-          public void onStateChanged(@NonNull View bottomSheet, int newState) {
-            switch (newState) {
-              case BottomSheetBehavior.STATE_HIDDEN:
-                break;
-              case BottomSheetBehavior.STATE_EXPANDED:
-                {
-                  bottomSheetArrowImageView.setImageResource(R.drawable.icn_chevron_down);
-                }
-                break;
-              case BottomSheetBehavior.STATE_COLLAPSED:
-                {
-                  bottomSheetArrowImageView.setImageResource(R.drawable.icn_chevron_up);
-                }
-                break;
-              case BottomSheetBehavior.STATE_DRAGGING:
-                break;
-              case BottomSheetBehavior.STATE_SETTLING:
+    if (bottomSheetLayout != null) {
+      sheetBehavior = BottomSheetBehavior.from(bottomSheetLayout);
+      sheetBehavior.setHideable(false);
+      sheetBehavior.setState(BottomSheetBehavior.STATE_EXPANDED);
+      sheetBehavior.setDraggable(false);
+      sheetBehavior.setBottomSheetCallback(
+          new BottomSheetBehavior.BottomSheetCallback() {
+            @Override
+            public void onStateChanged(@NonNull final View bottomSheet, final int newState) {
+              if (bottomSheetArrowImageView == null) {
+                return;
+              }
+              if (newState == BottomSheetBehavior.STATE_EXPANDED) {
+                bottomSheetArrowImageView.setImageResource(R.drawable.icn_chevron_down);
+              } else {
                 bottomSheetArrowImageView.setImageResource(R.drawable.icn_chevron_up);
-                break;
+              }
             }
-          }
 
-          @Override
-          public void onSlide(@NonNull View bottomSheet, float slideOffset) {}
-        });
+            @Override
+            public void onSlide(@NonNull final View bottomSheet, final float slideOffset) {}
+          });
+    }
 
     frameValueTextView = findViewById(R.id.frame_info);
     cropValueTextView = findViewById(R.id.crop_info);
     inferenceTimeTextView = findViewById(R.id.inference_info);
+    modelValueTextView = findViewById(R.id.model_value);
+    cameraValueTextView = findViewById(R.id.camera_value);
 
-    apiSwitchCompat.setOnCheckedChangeListener(this);
+    if (apiSwitchCompat != null) {
+      apiSwitchCompat.setOnCheckedChangeListener(this);
+    }
+    if (plusImageView != null) {
+      plusImageView.setOnClickListener(this);
+    }
+    if (minusImageView != null) {
+      minusImageView.setOnClickListener(this);
+    }
 
-    plusImageView.setOnClickListener(this);
-    minusImageView.setOnClickListener(this);
+    showActiveModel(ModelCatalog.toDisplayName(selectedModelFile));
+    showSelectedCamera(selectedCameraType);
+  }
+
+  private void bindTopOverlay() {
+    final View backButton = findViewById(R.id.backButton);
+    if (backButton != null) {
+      backButton.setOnClickListener(v -> finish());
+    }
+
+    modelDropdown = findViewById(R.id.model_dropdown);
+    if (modelDropdown == null) {
+      return;
+    }
+
+    final List<String> availableModelFiles = ModelCatalog.getAvailableModelFiles(getAssets());
+    final List<String> displayNames = new ArrayList<>();
+    for (final String modelFile : availableModelFiles) {
+      displayNames.add(ModelCatalog.toDisplayName(modelFile));
+    }
+
+    final ArrayAdapter<String> adapter =
+        new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, displayNames);
+    modelDropdown.setAdapter(adapter);
+    modelDropdown.setDropDownBackgroundDrawable(
+        ContextCompat.getDrawable(this, R.drawable.bg_dropdown_menu));
+    modelDropdown.setText(ModelCatalog.toDisplayName(selectedModelFile), false);
+    modelDropdown.setOnClickListener(v -> modelDropdown.showDropDown());
+    modelDropdown.setOnItemClickListener(
+        (parent, view, position, id) -> {
+          final String newModelFile = availableModelFiles.get(position);
+          if (!newModelFile.equals(selectedModelFile)) {
+            restartWithModel(newModelFile);
+          }
+        });
+  }
+
+  private void restartWithModel(final String newModelFile) {
+    final Intent intent = new Intent(this, DetectorActivity.class);
+    intent.putExtra("CAMERA_TYPE", selectedCameraType);
+    intent.putExtra("MODEL_FILE", newModelFile);
+    startActivity(intent);
+    finish();
+    overridePendingTransition(0, 0);
+  }
+
+  private void applyImmersiveMode() {
+    final WindowInsetsControllerCompat controller =
+        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+    if (controller != null) {
+      controller.hide(
+          WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.navigationBars());
+      controller.setSystemBarsBehavior(
+          WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+    }
   }
 
   protected int[] getRgbBytes() {
@@ -209,54 +244,7 @@ public abstract class CameraActivity extends AppCompatActivity
   protected byte[] getLuminance() {
     return yuvBytes[0];
   }
-  private void showCameraSelectionDialog() {
-    new android.app.AlertDialog.Builder(this)
-            .setTitle("Select Camera")
-            .setMessage("Choose which camera to use for object detection:")
-            .setPositiveButton("Rear Camera", (dialog, which) -> {
-              useFrontCamera = false;
-              setFragment();  // Set camera fragment using rear
-            })
-            .setNegativeButton("Front Camera", (dialog, which) -> {
-              useFrontCamera = true;
-              setFragment();  // Set camera fragment using front
-            })
-            .setCancelable(false)
-            .show();
-  }
 
-  private void showSettingsPopup() {
-    AlertDialog.Builder builder = new AlertDialog.Builder(CameraActivity.this);
-    View view = LayoutInflater.from(this).inflate(R.layout.settings_popup, null);
-    builder.setView(view);
-
-    TabLayout tabLayout = view.findViewById(R.id.tabLayout);
-
-    // Optional: add listeners to tab selection if needed
-    tabLayout.addOnTabSelectedListener(new TabLayout.OnTabSelectedListener() {
-      @Override
-      public void onTabSelected(TabLayout.Tab tab) {
-        if (tab.getPosition() == 0) {
-          Toast.makeText(CameraActivity.this, "Camera Settings", Toast.LENGTH_SHORT).show();
-          // You can open camera settings layout
-        } else if (tab.getPosition() == 1) {
-          Toast.makeText(CameraActivity.this, "Model Settings", Toast.LENGTH_SHORT).show();
-          // You can open model settings layout
-        }
-      }
-
-      @Override
-      public void onTabUnselected(TabLayout.Tab tab) { }
-
-      @Override
-      public void onTabReselected(TabLayout.Tab tab) { }
-    });
-
-    AlertDialog dialog = builder.create();
-    dialog.show();
-  }
-
-  /** Callback for android.hardware.Camera API */
   @Override
   public void onPreviewFrame(final byte[] bytes, final Camera camera) {
     if (isProcessingFrame) {
@@ -265,9 +253,8 @@ public abstract class CameraActivity extends AppCompatActivity
     }
 
     try {
-      // Initialize the storage bitmaps once when the resolution is known.
       if (rgbBytes == null) {
-        Camera.Size previewSize = camera.getParameters().getPreviewSize();
+        final Camera.Size previewSize = camera.getParameters().getPreviewSize();
         previewHeight = previewSize.height;
         previewWidth = previewSize.width;
         rgbBytes = new int[previewWidth * previewHeight];
@@ -283,32 +270,24 @@ public abstract class CameraActivity extends AppCompatActivity
     yRowStride = previewWidth;
 
     imageConverter =
-            new Runnable() {
-              @Override
-              public void run() {
-                try {
-                  ImageUtils.convertYUV420SPToARGB8888(bytes, previewWidth, previewHeight, rgbBytes);
-                } catch (Exception e) {
-                  LOGGER.e(e, "Preview conversion failed");
-                }
-              }
-            };
+        () -> {
+          try {
+            ImageUtils.convertYUV420SPToARGB8888(bytes, previewWidth, previewHeight, rgbBytes);
+          } catch (final Exception e) {
+            LOGGER.e(e, "Preview conversion failed");
+          }
+        };
 
     postInferenceCallback =
-        new Runnable() {
-          @Override
-          public void run() {
-            camera.addCallbackBuffer(bytes);
-            isProcessingFrame = false;
-          }
+        () -> {
+          camera.addCallbackBuffer(bytes);
+          isProcessingFrame = false;
         };
     processImage();
   }
 
-  /** Callback for Camera2 API */
   @Override
   public void onImageAvailable(final ImageReader reader) {
-    // We need wait until we have some size from onPreviewSizeChosen
     if (previewWidth == 0 || previewHeight == 0) {
       return;
     }
@@ -335,34 +314,27 @@ public abstract class CameraActivity extends AppCompatActivity
       final int uvPixelStride = planes[1].getPixelStride();
 
       imageConverter =
-              new Runnable() {
-                @Override
-                public void run() {
-                  try {
-                    ImageUtils.convertYUV420ToARGB8888(
-                            yuvBytes[0],
-                            yuvBytes[1],
-                            yuvBytes[2],
-                            previewWidth,
-                            previewHeight,
-                            yRowStride,
-                            uvRowStride,
-                            uvPixelStride,
-                            rgbBytes);
-                  } catch (Exception e) {
-                    LOGGER.e(e, "Image conversion failed");
-                  }
-                }
-              };
-
+          () -> {
+            try {
+              ImageUtils.convertYUV420ToARGB8888(
+                  yuvBytes[0],
+                  yuvBytes[1],
+                  yuvBytes[2],
+                  previewWidth,
+                  previewHeight,
+                  yRowStride,
+                  uvRowStride,
+                  uvPixelStride,
+                  rgbBytes);
+            } catch (final Exception e) {
+              LOGGER.e(e, "Image conversion failed");
+            }
+          };
 
       postInferenceCallback =
-          new Runnable() {
-            @Override
-            public void run() {
-              image.close();
-              isProcessingFrame = false;
-            }
+          () -> {
+            image.close();
+            isProcessingFrame = false;
           };
 
       processImage();
@@ -375,15 +347,10 @@ public abstract class CameraActivity extends AppCompatActivity
   }
 
   @Override
-  public synchronized void onStart() {
-    LOGGER.d("onStart " + this);
-    super.onStart();
-  }
-
-  @Override
   public synchronized void onResume() {
     LOGGER.d("onResume " + this);
     super.onResume();
+    applyImmersiveMode();
 
     handlerThread = new HandlerThread("inference");
     handlerThread.start();
@@ -406,18 +373,6 @@ public abstract class CameraActivity extends AppCompatActivity
     super.onPause();
   }
 
-  @Override
-  public synchronized void onStop() {
-    LOGGER.d("onStop " + this);
-    super.onStop();
-  }
-
-  @Override
-  public synchronized void onDestroy() {
-    LOGGER.d("onDestroy " + this);
-    super.onDestroy();
-  }
-
   protected synchronized void runInBackground(final Runnable r) {
     if (handler != null) {
       handler.post(r);
@@ -438,7 +393,7 @@ public abstract class CameraActivity extends AppCompatActivity
   }
 
   private static boolean allPermissionsGranted(final int[] grantResults) {
-    for (int result : grantResults) {
+    for (final int result : grantResults) {
       if (result != PackageManager.PERMISSION_GRANTED) {
         return false;
       }
@@ -467,16 +422,16 @@ public abstract class CameraActivity extends AppCompatActivity
     }
   }
 
-  // Returns true if the device supports the required hardware level, or better.
   private boolean isHardwareLevelSupported(
-      CameraCharacteristics characteristics, int requiredLevel) {
-    int deviceLevel = characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL);
+      final CameraCharacteristics characteristics, final int requiredLevel) {
+    final int deviceLevel =
+        characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL);
     if (deviceLevel == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY) {
       return requiredLevel == deviceLevel;
     }
-    // deviceLevel is not LEGACY, can use numerical sort
     return requiredLevel <= deviceLevel;
   }
+
   private String chooseCamera() {
     final CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
 
@@ -485,56 +440,60 @@ public abstract class CameraActivity extends AppCompatActivity
         final CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
         final Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
 
-        if (selectedCameraType.equals("Front Camera") && facing != null &&
-                facing == CameraCharacteristics.LENS_FACING_FRONT) {
+        if (selectedCameraType.equals("Front Camera")
+            && facing != null
+            && facing == CameraCharacteristics.LENS_FACING_FRONT) {
           return validateCamera(characteristics, cameraId);
         }
 
-        if (selectedCameraType.equals("Rear Camera") && facing != null &&
-                facing == CameraCharacteristics.LENS_FACING_BACK) {
+        if (selectedCameraType.equals("Rear Camera")
+            && facing != null
+            && facing == CameraCharacteristics.LENS_FACING_BACK) {
           return validateCamera(characteristics, cameraId);
         }
 
-        if (selectedCameraType.equals("USB Camera") && facing != null &&
-                facing == CameraCharacteristics.LENS_FACING_EXTERNAL) {
+        if (selectedCameraType.equals("USB Camera")
+            && facing != null
+            && facing == CameraCharacteristics.LENS_FACING_EXTERNAL) {
           return validateCamera(characteristics, cameraId);
         }
       }
-    } catch (CameraAccessException e) {
+    } catch (final CameraAccessException e) {
       LOGGER.e(e, "Not allowed to access camera");
     }
 
     return null;
   }
-  private String validateCamera(CameraCharacteristics characteristics, String cameraId) {
+
+  private String validateCamera(
+      final CameraCharacteristics characteristics, final String cameraId) {
     final StreamConfigurationMap map =
-            characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
-    if (map == null) return null;
+        characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+    if (map == null) {
+      return null;
+    }
 
     useCamera2API =
-            (characteristics.get(CameraCharacteristics.LENS_FACING) ==
-                    CameraCharacteristics.LENS_FACING_EXTERNAL) ||
-                    isHardwareLevelSupported(
-                            characteristics, CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
+        (characteristics.get(CameraCharacteristics.LENS_FACING)
+                == CameraCharacteristics.LENS_FACING_EXTERNAL)
+            || isHardwareLevelSupported(
+                characteristics, CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
 
     LOGGER.i("Camera API lv2?: %s", useCamera2API);
     return cameraId;
   }
 
   protected void setFragment() {
-    String cameraId = chooseCamera();
+    final String cameraId = chooseCamera();
 
-    Fragment fragment;
+    final Fragment fragment;
     if (useCamera2API) {
-      CameraConnectionFragment camera2Fragment =
+      final CameraConnectionFragment camera2Fragment =
           CameraConnectionFragment.newInstance(
-              new CameraConnectionFragment.ConnectionCallback() {
-                @Override
-                public void onPreviewSizeChosen(final Size size, final int rotation) {
-                  previewHeight = size.getHeight();
-                  previewWidth = size.getWidth();
-                  CameraActivity.this.onPreviewSizeChosen(size, rotation);
-                }
+              (size, rotation) -> {
+                previewHeight = size.getHeight();
+                previewWidth = size.getWidth();
+                CameraActivity.this.onPreviewSizeChosen(size, rotation);
               },
               this,
               getLayoutId(),
@@ -543,16 +502,13 @@ public abstract class CameraActivity extends AppCompatActivity
       camera2Fragment.setCamera(cameraId);
       fragment = camera2Fragment;
     } else {
-      fragment =
-          new LegacyCameraConnectionFragment(this, getLayoutId(), getDesiredPreviewFrameSize());
+      fragment = new LegacyCameraConnectionFragment(this, getLayoutId(), getDesiredPreviewFrameSize());
     }
 
     getFragmentManager().beginTransaction().replace(R.id.container, fragment).commit();
   }
 
   protected void fillBytes(final Plane[] planes, final byte[][] yuvBytes) {
-    // Because of the variable row stride it's not possible to know in
-    // advance the actual necessary dimensions of the yuv planes.
     for (int i = 0; i < planes.length; ++i) {
       final ByteBuffer buffer = planes[i].getBuffer();
       if (yuvBytes[i] == null) {
@@ -587,43 +543,63 @@ public abstract class CameraActivity extends AppCompatActivity
   }
 
   @Override
-  public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+  public void onCheckedChanged(final CompoundButton buttonView, final boolean isChecked) {
     setUseNNAPI(isChecked);
-    if (isChecked) apiSwitchCompat.setText("NNAPI");
-    else apiSwitchCompat.setText("TFLITE");
-  }
-
-  @Override
-  public void onClick(View v) {
-    if (v.getId() == R.id.plus) {
-      String threads = threadsTextView.getText().toString().trim();
-      int numThreads = Integer.parseInt(threads);
-      if (numThreads >= 9) return;
-      numThreads++;
-      threadsTextView.setText(String.valueOf(numThreads));
-      setNumThreads(numThreads);
-    } else if (v.getId() == R.id.minus) {
-      String threads = threadsTextView.getText().toString().trim();
-      int numThreads = Integer.parseInt(threads);
-      if (numThreads == 1) {
-        return;
-      }
-      numThreads--;
-      threadsTextView.setText(String.valueOf(numThreads));
-      setNumThreads(numThreads);
+    if (apiSwitchCompat != null) {
+      apiSwitchCompat.setText(isChecked ? "NNAPI" : "TFLITE");
     }
   }
 
-  protected void showFrameInfo(String frameInfo) {
-    frameValueTextView.setText(frameInfo);
+  @Override
+  public void onClick(final View v) {
+    if (threadsTextView == null) {
+      return;
+    }
+    if (v.getId() == R.id.plus) {
+      final int numThreads = Integer.parseInt(threadsTextView.getText().toString().trim());
+      if (numThreads >= 9) {
+        return;
+      }
+      threadsTextView.setText(String.valueOf(numThreads + 1));
+      setNumThreads(numThreads + 1);
+    } else if (v.getId() == R.id.minus) {
+      final int numThreads = Integer.parseInt(threadsTextView.getText().toString().trim());
+      if (numThreads <= 1) {
+        return;
+      }
+      threadsTextView.setText(String.valueOf(numThreads - 1));
+      setNumThreads(numThreads - 1);
+    }
   }
 
-  protected void showCropInfo(String cropInfo) {
-    cropValueTextView.setText(cropInfo);
+  protected void showFrameInfo(final String frameInfo) {
+    if (frameValueTextView != null) {
+      frameValueTextView.setText(frameInfo);
+    }
   }
 
-  protected void showInference(String inferenceTime) {
-    inferenceTimeTextView.setText(inferenceTime);
+  protected void showCropInfo(final String cropInfo) {
+    if (cropValueTextView != null) {
+      cropValueTextView.setText(cropInfo);
+    }
+  }
+
+  protected void showInference(final String inferenceTime) {
+    if (inferenceTimeTextView != null) {
+      inferenceTimeTextView.setText(inferenceTime);
+    }
+  }
+
+  protected void showActiveModel(final String modelName) {
+    if (modelValueTextView != null) {
+      modelValueTextView.setText(modelName);
+    }
+  }
+
+  protected void showSelectedCamera(final String cameraName) {
+    if (cameraValueTextView != null) {
+      cameraValueTextView.setText(cameraName);
+    }
   }
 
   protected abstract void processImage();

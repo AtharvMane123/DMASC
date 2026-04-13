@@ -12,10 +12,9 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.os.Bundle;
 import android.os.Handler;
-import android.util.Log;
-import android.view.View;
 import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import org.tensorflow.lite.examples.detection.customview.OverlayView;
@@ -33,8 +32,12 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
 
     public static final float MINIMUM_CONFIDENCE_TF_OD_API = 0.5f;
-    public static String selectedCameraType = "Rear";  // Default
-    public static String selectedModelName = "YOLOv4"; // Default
+    public static String selectedCameraType = "Rear Camera";  // Default
+    public static String selectedModelFile = ModelCatalog.DEFAULT_MODEL_FILE;
+
+    private List<String> availableModelFiles;
+    private TextView selectedCameraValue;
+    private TextView selectedModelValue;
 
 
     @Override
@@ -45,8 +48,14 @@ public class MainActivity extends AppCompatActivity {
         cameraButton = findViewById(R.id.cameraButton);
         detectButton = findViewById(R.id.detectButton);
         imageView = findViewById(R.id.imageView);
+        selectedCameraValue = findViewById(R.id.selectedCameraValue);
+        selectedModelValue = findViewById(R.id.selectedModelValue);
         Button chooseCameraBtn = findViewById(R.id.chooseCamera);
-        Button selectModelBtn = findViewById(R.id.button3);
+        Button selectModelBtn = findViewById(R.id.selectModelButton);
+
+        availableModelFiles = ModelCatalog.getAvailableModelFiles(getAssets());
+        selectedModelFile = ModelCatalog.getSafeModelFile(getAssets(), selectedModelFile);
+        bindSelectionSummary();
 
         chooseCameraBtn.setOnClickListener(v -> showCameraSelectionDialog());
 
@@ -55,7 +64,7 @@ public class MainActivity extends AppCompatActivity {
         cameraButton.setOnClickListener(v -> {
             Intent intent = new Intent(MainActivity.this, DetectorActivity.class);
             intent.putExtra("CAMERA_TYPE", selectedCameraType);
-            intent.putExtra("MODEL_NAME", selectedModelName);
+            intent.putExtra("MODEL_FILE", selectedModelFile);
             startActivity(intent);
         });
 
@@ -89,20 +98,34 @@ public class MainActivity extends AppCompatActivity {
                 .setItems(cameraOptions, (dialog, which) -> {
                     selectedCameraType = cameraOptions[which];
                     Toast.makeText(this, selectedCameraType + " selected", Toast.LENGTH_SHORT).show();
+                    bindSelectionSummary();
                 })
                 .show();
     }
 
     private void showModelSelectionDialog() {
-        String[] modelOptions = {"YOLOv4", "YOLOv5", "SSD MobileNet", "Custom"};
+        final String[] modelOptions = new String[availableModelFiles.size()];
+        for (int i = 0; i < availableModelFiles.size(); i++) {
+            modelOptions[i] = ModelCatalog.toDisplayName(availableModelFiles.get(i));
+        }
 
         new android.app.AlertDialog.Builder(this)
                 .setTitle("Select Model")
                 .setItems(modelOptions, (dialog, which) -> {
-                    selectedModelName = modelOptions[which];
-                    Toast.makeText(this, selectedModelName + " selected", Toast.LENGTH_SHORT).show();
+                    selectedModelFile = availableModelFiles.get(which);
+                    Toast.makeText(this, modelOptions[which] + " selected", Toast.LENGTH_SHORT).show();
+                    bindSelectionSummary();
                 })
                 .show();
+    }
+
+    private void bindSelectionSummary() {
+        if (selectedCameraValue != null) {
+            selectedCameraValue.setText(selectedCameraType);
+        }
+        if (selectedModelValue != null) {
+            selectedModelValue.setText(ModelCatalog.toDisplayName(selectedModelFile));
+        }
     }
 
     private static final Logger LOGGER = new Logger();
@@ -136,6 +159,7 @@ public class MainActivity extends AppCompatActivity {
     private ImageView imageView;
 
     private void initBox() {
+        selectedModelFile = ModelCatalog.getSafeModelFile(getAssets(), selectedModelFile);
         previewHeight = TF_OD_API_INPUT_SIZE;
         previewWidth = TF_OD_API_INPUT_SIZE;
         frameToCropTransform =
@@ -158,7 +182,7 @@ public class MainActivity extends AppCompatActivity {
             detector =
                     YoloV4Classifier.create(
                             getAssets(),
-                            TF_OD_API_MODEL_FILE,
+                            selectedModelFile,
                             TF_OD_API_LABELS_FILE,
                             TF_OD_API_IS_QUANTIZED);
         } catch (final IOException e) {

@@ -54,7 +54,6 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
     private static final int TF_OD_API_INPUT_SIZE = 416;
     private static final boolean TF_OD_API_IS_QUANTIZED = false;
-    private static final String TF_OD_API_MODEL_FILE = "yolov4-416-fp32.tflite";
 
     private static final String TF_OD_API_LABELS_FILE = "file:///android_asset/coco.txt";
 
@@ -84,6 +83,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     private MultiBoxTracker tracker;
 
     private BorderedText borderedText;
+    private String activeModelFile;
 
     @Override
     public void onPreviewSizeChosen(final Size size, final int rotation) {
@@ -95,9 +95,9 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
         tracker = new MultiBoxTracker(this);
         String cameraType = getIntent().getStringExtra("CAMERA_TYPE");
-        String modelName = getIntent().getStringExtra("MODEL_NAME");
+        activeModelFile = ModelCatalog.getSafeModelFile(getAssets(), getIntent().getStringExtra("MODEL_FILE"));
 
-        Log.d("DetectorSettings", "Camera: " + cameraType + ", Model: " + modelName);
+        Log.d("DetectorSettings", "Camera: " + cameraType + ", Model: " + activeModelFile);
 
         int cropSize = TF_OD_API_INPUT_SIZE;
 
@@ -105,7 +105,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
             detector =
                     YoloV4Classifier.create(
                             getAssets(),
-                            TF_OD_API_MODEL_FILE,
+                            activeModelFile,
                             TF_OD_API_LABELS_FILE,
                             TF_OD_API_IS_QUANTIZED);
 //            detector = TFLiteObjectDetectionAPIModel.create(
@@ -236,6 +236,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
                                         showFrameInfo(previewWidth + "x" + previewHeight);
                                         showCropInfo(cropCopyBitmap.getWidth() + "x" + cropCopyBitmap.getHeight());
                                         showInference(lastProcessingTimeMs + "ms");
+                                        showActiveModel(ModelCatalog.toDisplayName(activeModelFile));
                                     }
                                 });
                     }
